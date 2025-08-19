@@ -1,0 +1,15 @@
+<div class="form-group">
+  <label for="album_url" class="form-label">iCloud Shared Album URL:</label>
+  <input id="album_url" name="album_url" type="text" class="form-input" required placeholder="https://www.icloud.com/sharedalbum/#B2DGrq0zwNdvLm">
+  <small class="form-text text-muted">
+    Paste the full iCloud Shared Album URL. The plugin will fetch photos automatically.
+  </small>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  if (loadPluginSettings) {
+    document.getElementById('album_url').value = pluginSettings.album_url;
+  }
+});
+</script>
