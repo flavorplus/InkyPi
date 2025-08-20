@@ -4,7 +4,7 @@ import random
 import io
 import requests
 import logging
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageColor
 from plugins.base_plugin.base_plugin import BasePlugin
 
 USER_AGENT = "InkyPi/iCloudPhotos/0.1"
@@ -185,10 +185,14 @@ class IcloudPhotos(BasePlugin):
             dimensions = dimensions[::-1]
         logger.debug("Target render dimensions: %s", dimensions)
 
-        img = self._download_and_fit(photo_url, dimensions)
+        bg_hex = settings.get("backgroundColor", "#FFFFFF")
+        bg_rgb = ImageColor.getrgb(bg_hex)
+        logger.debug("Using background color: %s (RGB: %s)", bg_hex, bg_rgb)
+
+        img = self._download_and_fit(photo_url, dimensions, background=bg_rgb)
         return img
 
-    def _download_and_fit(self, url, target_size):
+    def _download_and_fit(self, url, target_size, background=(255, 255, 255)):
         """
         Download image bytes and fit into target_size while preserving aspect ratio.
         Uses white letterboxing (common for e-ink).
@@ -199,7 +203,7 @@ class IcloudPhotos(BasePlugin):
 
         with Image.open(io.BytesIO(resp.content)) as im:
             im = im.convert("RGB")  # e-ink friendly
-            canvas = Image.new("RGB", target_size, (255, 255, 255))
+            canvas = Image.new("RGB", target_size, background)
             fitted = ImageOps.contain(im, target_size)  # preserves aspect
 
             # center paste
