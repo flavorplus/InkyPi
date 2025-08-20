@@ -4,12 +4,15 @@ import random
 import io
 import requests
 import logging
-from PIL import Image, ImageOps, ImageColor
+from PIL import Image, ImageOps, ImageColor, UnidentifiedImageError
 from plugins.base_plugin.base_plugin import BasePlugin
 
 USER_AGENT = "InkyPi/iCloudPhotos/0.1"
 DEFAULT_HEADERS = {"Content-Type": "text/plain", "User-Agent": USER_AGENT}
 TIMEOUT = 30
+
+SESSION = requests.Session()
+SESSION.headers.update(DEFAULT_HEADERS)
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,7 @@ def get_stream_contents(stream_id):
     """
     url = f"https://p{get_partition(stream_id)}-sharedstreams.icloud.com/{stream_id}/sharedstreams/webstream"
     logger.debug("Fetching stream contents from %s", url)
-    r = requests.post(url, data=json.dumps({"streamCtag": None}), headers=DEFAULT_HEADERS, timeout=TIMEOUT)
+    r = SESSION.post(url, data=json.dumps({"streamCtag": None}), timeout=TIMEOUT)
     r.raise_for_status()
     data = r.json()
 
@@ -87,7 +90,7 @@ def get_photo_url(stream_id, guid, checksum):
     payload = {"photoGuids": [guid]}
     logger.debug("Resolving photo URL for guid=%s via %s", guid, url)
 
-    r = requests.post(url, data=json.dumps(payload), headers=DEFAULT_HEADERS, timeout=TIMEOUT)
+    r = SESSION.post(url, data=json.dumps(payload), timeout=TIMEOUT)
     r.raise_for_status()
     data = r.json()
 
@@ -133,61 +136,56 @@ class IcloudPhotos(BasePlugin):
         if not album_url:
             raise RuntimeError("Missing album URL. Please set the iCloud Shared Album URL in plugin settings.")
 
-        # 1) Latest guid->checksum map
+        # 1) Fetch latest guid->checksum map
         stream_id = get_stream_id(album_url)
         latest_map = get_stream_contents(stream_id)
 
-        # 2) Merge into saved state
-        saved = settings.get("photos") or {}  # {guid: {"checksum": str, "viewed": bool}}
-        changed = False
-        added = 0
-        updated = 0
-        for guid, checksum in latest_map.items():
-            if guid not in saved:
-                saved[guid] = {"checksum": checksum, "viewed": False}
-                added += 1
-                changed = True
-            elif saved[guid].get("checksum") != checksum:
-                saved[guid]["checksum"] = checksum
-                updated += 1
-                changed = True
-        if added or updated:
-            logger.info("Merged photos: %d added, %d updated (total now %d)", added, updated, len(saved))
+        # 2) Sync (preserve "viewed"; drop stale; add new)
+        old = settings.get("photos") or {}
+        saved = {
+            guid: {
+                "checksum": checksum,
+                "viewed": (old.get(guid) or {}).get("viewed", False),
+            }
+            for guid, checksum in latest_map.items()
+        }
+        dirty = (saved != old)  # only persist if something actually changed
+        if dirty:
+            logger.debug("Detected %d new or updated photos", len(saved) - len(old))
 
-        # 3/6) Pick an unviewed; if none, reset
+        # 3) Choose an unviewed; if none, reset flags in one go
         unseen = [g for g, meta in saved.items() if not meta.get("viewed")]
         if not unseen:
-            logger.info("All photos viewed; resetting viewed flags.")
-            for g in saved:
-                saved[g]["viewed"] = False
+            logger.info("All photos viewed; resetting flags.")
+            saved = {g: {"checksum": meta["checksum"], "viewed": False} for g, meta in saved.items()}
             unseen = list(saved.keys())
-            changed = True
+            dirty = True
 
         if not unseen:
             raise RuntimeError("No photos available after refresh. Please check the album or network.")
 
+        # 4) Pick random, mark viewed
         guid = random.choice(unseen)
         checksum = saved[guid]["checksum"]
-        logger.info("Selected guid=%s (unseen remaining: %d, total pictures online: %d)", guid, len(unseen), len(latest_map))
+        logger.info("Selected guid=%s (unseen remaining: %d, total online: %d)", guid, len(unseen), len(latest_map))
 
-        # 5) Mark viewed and persist
         photo_url = get_photo_url(stream_id, guid, checksum)
-        saved[guid]["viewed"] = True
-        changed = True
+        if not saved[guid].get("viewed"):
+            saved[guid]["viewed"] = True
+            dirty = True
 
-        if changed:
-            settings["photos"] = saved  # Persist plugin instance state
-            logger.debug("Persisted state with %d total photos", len(saved))
+        # 5) Persist once at the end (only if changed)
+        if dirty:
+            settings["photos"] = saved
+            logger.debug("Persisted state with %d photos", len(saved))
 
-        # 7) Download + fit to screen
+        # 6) Render
         dimensions = device_config.get_resolution()
         if device_config.get_config("orientation") == "vertical":
             dimensions = dimensions[::-1]
-        logger.debug("Target render dimensions: %s", dimensions)
 
         bg_hex = settings.get("backgroundColor", "#FFFFFF")
         bg_rgb = ImageColor.getrgb(bg_hex)
-        logger.debug("Using background color: %s (RGB: %s)", bg_hex, bg_rgb)
 
         img = self._download_and_fit(photo_url, dimensions, background=bg_rgb)
         return img
@@ -198,17 +196,23 @@ class IcloudPhotos(BasePlugin):
         Uses white letterboxing (common for e-ink).
         """
         logger.debug("Downloading image: %s", url)
-        resp = requests.get(url, timeout=TIMEOUT)
-        resp.raise_for_status()
+        try
+            resp = SESSION.get(url, timeout=TIMEOUT)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            raise RuntimeError(f"Failed to download image: {e}") from e
+        
+        try:
+            with Image.open(io.BytesIO(resp.content)) as im:
+                im = im.convert("RGB")  # e-ink friendly
+                canvas = Image.new("RGB", target_size, background)
+                fitted = ImageOps.contain(im, target_size, method=Image.LANCZOS) 
 
-        with Image.open(io.BytesIO(resp.content)) as im:
-            im = im.convert("RGB")  # e-ink friendly
-            canvas = Image.new("RGB", target_size, background)
-            fitted = ImageOps.contain(im, target_size)  # preserves aspect
-
-            # center paste
-            x = (canvas.width - fitted.width) // 2
-            y = (canvas.height - fitted.height) // 2
-            canvas.paste(fitted, (x, y))
-            logger.debug("Pasted fitted image at (%d, %d) onto canvas %s", x, y, target_size)
-            return canvas
+                # center paste
+                x = (canvas.width - fitted.width) // 2
+                y = (canvas.height - fitted.height) // 2
+                canvas.paste(fitted, (x, y))
+                logger.debug("Pasted fitted image at (%d, %d) onto canvas %s", x, y, target_size)
+                return canvas
+        except UnidentifiedImageError as e:
+            raise RuntimeError("Downloaded content is not a valid image format.") from e
