@@ -196,7 +196,7 @@ class IcloudPhotos(BasePlugin):
         Uses white letterboxing (common for e-ink).
         """
         logger.debug("Downloading image: %s", url)
-        try
+        try:
             resp = SESSION.get(url, timeout=TIMEOUT)
             resp.raise_for_status()
         except requests.RequestException as e:
