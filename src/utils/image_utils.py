@@ -1,5 +1,5 @@
 import requests
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 from io import BytesIO
 import os
 import logging
@@ -29,36 +29,64 @@ def change_orientation(image, orientation, inverted=False):
 
     return image.rotate(angle, expand=1)
 
-def resize_image(image, desired_size, image_settings=[]):
-    img_width, img_height = image.size
-    desired_width, desired_height = desired_size
-    desired_width, desired_height = int(desired_width), int(desired_height)
+def resize_image(image, desired_size, image_settings=None, orientation="horizontal", background=(255, 255, 255)):
+    """
+    Resize/crop an image to desired_size with optional smart behavior.
+    
+    image_settings flags:
+      - "keep-width": keep full width, crop height only
+      - "smart-orientation": apply orientation-aware rules:
+          orientation="horizontal":
+            * portrait  -> letterbox (no crop)
+            * landscape/square -> crop to fill
+          orientation="vertical":
+            * portrait  -> crop just enough to fill
+            * landscape/square -> stretch (distort) to fill
+    """
+    if image_settings is None:
+        image_settings = []
 
-    img_ratio = img_width / img_height
-    desired_ratio = desired_width / desired_height
+    desired_width, desired_height = map(int, desired_size)
+    img_w, img_h = image.size
+    is_landscape_or_square = img_w >= img_h
+    is_portrait = not is_landscape_or_square
 
-    keep_width = "keep-width" in image_settings
+    # ---- 1) Legacy behavior: keep-width ----
+    if "keep-width" in image_settings:
+        # Keep full width; crop vertically as needed, then resize
+        desired_ratio = desired_width / desired_height
+        new_height = int(img_w / desired_ratio)
+        # Centered vertical crop; clamp to image bounds
+        y_offset = max(0, (img_h - new_height) // 2)
+        y_end = min(img_h, y_offset + new_height)
+        cropped = image.crop((0, y_offset, img_w, y_end))
+        return cropped.resize((desired_width, desired_height), Image.LANCZOS)
 
-    x_offset, y_offset = 0,0
-    new_width, new_height = img_width,img_height
-    # Step 1: Determine crop dimensions
-    desired_ratio = desired_width / desired_height
-    if img_ratio > desired_ratio:
-        # Image is wider than desired aspect ratio
-        new_width = int(img_height * desired_ratio)
-        if not keep_width:
-            x_offset = (img_width - new_width) // 2
-    else:
-        # Image is taller than desired aspect ratio
-        new_height = int(img_width / desired_ratio)
-        if not keep_width:
-            y_offset = (img_height - new_height) // 2
+    # ---- 2) Smart orientation-aware behavior ----
+    if "smart-orientation" in image_settings:
+        if orientation == "horizontal":
+            if is_portrait:
+                # Letterbox: preserve aspect, no crop
+                fitted = ImageOps.contain(image, (desired_width, desired_height), method=Image.LANCZOS)
+                canvas = Image.new("RGB", (desired_width, desired_height), background)
+                x = (desired_width - fitted.width) // 2
+                y = (desired_height - fitted.height) // 2
+                canvas.paste(fitted, (x, y))
+                return canvas
+            else:
+                # Crop to fill (centered)
+                return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
 
-    # Step 2: Crop the image
-    image = image.crop((x_offset, y_offset, x_offset + new_width, y_offset + new_height))
+        else:  # orientation == "vertical"
+            if is_portrait:
+                # Crop just enough to fill (centered); typically a slight crop
+                return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+            else:
+                # Stretch landscape to fill portrait (non-proportional)
+                return image.resize((desired_width, desired_height), Image.LANCZOS)
 
-    # Step 3: Resize to the exact desired dimensions (if necessary)
-    return image.resize((desired_width, desired_height), Image.LANCZOS)
+    # ---- 3) Default behavior (simple, robust): crop to fill ----
+    return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
 
 def apply_image_enhancement(img, image_settings={}):
 

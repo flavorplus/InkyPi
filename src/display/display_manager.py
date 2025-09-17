@@ -76,7 +76,7 @@ class DisplayManager:
 
         # Resize and adjust orientation
         image = change_orientation(image, self.device_config.get_config("orientation"))
-        image = resize_image(image, self.device_config.get_resolution(), image_settings)
+        image = resize_image(image, self.device_config.get_resolution(), image_settings, self.device_config.get_config("orientation"))
         if self.device_config.get_config("inverted_image"): image = image.rotate(180)
         image = apply_image_enhancement(image, self.device_config.get_config("image_settings"))
 

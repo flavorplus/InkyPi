@@ -51,7 +51,7 @@ for resolution in RESOLUTIONS:
 
         # post processing thats applied before being displayed
         img = change_orientation(img, orientation)
-        img = resize_image(img, resolution, plugin_config.get('image_settings', []))
+        img = resize_image(img, resolution, plugin_config.get('image_settings', []), orientation)
         # rotate the image again when pasting
         if orientation == "vertical":
             img = img.rotate(-90, expand=1)
