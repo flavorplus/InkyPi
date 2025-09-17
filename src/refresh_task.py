@@ -221,10 +221,6 @@ class RefreshAction:
         """Return the plugin ID associated with this refresh."""
         raise NotImplementedError("Subclasses must implement the get_plugin_id method.")
 
-    def get_plugin_settings(self):
-        """Return the plugin settings associated with this refresh."""
-        return {}
-
 class ManualRefresh(RefreshAction):
     """Performs a manual refresh based on a plugin's ID and its associated settings.
     
@@ -248,9 +244,6 @@ class ManualRefresh(RefreshAction):
     def get_plugin_id(self):
         """Return the plugin ID associated with this refresh."""
         return self.plugin_id
-
-    def get_plugin_settings(self):
-        return self.plugin_settings
 
 class PlaylistRefresh(RefreshAction):
     """Performs a refresh using a plugin instance within a playlist context.
@@ -277,9 +270,6 @@ class PlaylistRefresh(RefreshAction):
     def get_plugin_id(self):
         """Return the plugin ID associated with this refresh."""
         return self.plugin_instance.plugin_id
-
-    def get_plugin_settings(self):
-        return self.plugin_instance.settings
 
     def execute(self, plugin, device_config, current_dt: datetime):
         """Performs a refresh for the specified plugin instance within its playlist context."""
