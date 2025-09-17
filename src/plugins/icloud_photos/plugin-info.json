@@ -1,5 +1,8 @@
 {
   "display_name": "iCloud Photos",
   "id": "icloud_photos",
-  "class": "IcloudPhotos"
+  "class": "IcloudPhotos",
+  "photo_fit": {
+    "strategy": "smart"
+  }
 }

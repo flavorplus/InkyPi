@@ -1,9 +1,9 @@
 import fnmatch
-import json
 import logging
 
 from utils.image_utils import resize_image, change_orientation, apply_image_enhancement
 from display.mock_display import MockDisplay
+from PIL import ImageColor
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +54,17 @@ class DisplayManager:
         else:
             raise ValueError(f"Unsupported display type: {display_type}")
 
-    def display_image(self, image, image_settings=[]):
-        
+    def display_image(self, image, photo_fit=None, backgroundColor=None):
+
         """
-        Delegates image rendering to the appropriate display instance.
+        Resize, enhance, and delegate rendering of an image to the active display.
 
         Args:
             image (PIL.Image): The image to be displayed.
-            image_settings (list, optional): List of settings to modify image rendering.
+            photo_fit (dict, optional): Fit configuration describing how the image
+                should be resized (keys like "strategy" or "preserve").
+            backgroundColor (str, optional): Hex color for any padding applied
+                during contain/letterbox style fits.
 
         Raises:
             ValueError: If no valid display instance is found.
@@ -69,16 +72,43 @@ class DisplayManager:
 
         if not hasattr(self, "display"):
             raise ValueError("No valid display instance initialized.")
-        
-        # Save the image
+
         logger.info(f"Saving image to {self.device_config.current_image_file}")
         image.save(self.device_config.current_image_file)
 
-        # Resize and adjust orientation
-        image = change_orientation(image, self.device_config.get_config("orientation"))
-        image = resize_image(image, self.device_config.get_resolution(), image_settings, self.device_config.get_config("orientation"))
-        if self.device_config.get_config("inverted_image"): image = image.rotate(180)
-        image = apply_image_enhancement(image, self.device_config.get_config("image_settings"))
+        bg_hex = backgroundColor or "#FFFFFF"
+        try:
+            background = ImageColor.getrgb(bg_hex)
+        except ValueError:
+            logger.warning(f"Invalid backgroundColor '{bg_hex}', defaulting to white")
+            background = (255, 255, 255)
 
-        # Pass to the concrete instance to render to the device.
-        self.display.display_image(image, image_settings)
+        orientation = self.device_config.get_config("orientation", default="horizontal")
+        image = change_orientation(image, orientation)
+
+        fit_config = {}
+        if isinstance(photo_fit, dict):
+            candidate = photo_fit.get("fit") if isinstance(photo_fit.get("fit"), dict) else photo_fit
+            for key in ("strategy", "preserve"):
+                if key in candidate:
+                    fit_config[key] = str(candidate[key]).lower()
+        elif photo_fit:
+            logger.warning("Unsupported photo_fit format %r; expected dict", photo_fit)
+
+        image = resize_image(
+            image,
+            self.device_config.get_resolution(),
+            fit=fit_config,
+            orientation=orientation,
+            background=background,
+        )
+
+        if self.device_config.get_config("inverted_image"):
+            image = image.rotate(180)
+
+        image = apply_image_enhancement(
+            image,
+            self.device_config.get_config("image_settings", {}),
+        )
+
+        self.display.display_image(image)

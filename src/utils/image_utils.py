@@ -29,44 +29,39 @@ def change_orientation(image, orientation, inverted=False):
 
     return image.rotate(angle, expand=1)
 
-def resize_image(image, desired_size, image_settings=None, orientation="horizontal", background=(255, 255, 255)):
+def resize_image(image, desired_size, fit=None, orientation="horizontal", background=(255, 255, 255)):
     """
-    Resize/crop an image to desired_size with optional smart behavior.
-    
-    image_settings flags:
-      - "keep-width": keep full width, crop height only
-      - "smart-orientation": apply orientation-aware rules:
-          orientation="horizontal":
-            * portrait  -> letterbox (no crop)
-            * landscape/square -> crop to fill
-          orientation="vertical":
-            * portrait  -> crop just enough to fill
-            * landscape/square -> stretch (distort) to fill
+    Resize/crop image to desired_size based on fit strategy.
+    fit: { "strategy": "smart|cover|contain|stretch|default", "preserve": "none|width|height" }
     """
-    if image_settings is None:
-        image_settings = []
-
     desired_width, desired_height = map(int, desired_size)
+    fit = fit or {}
+    strategy = fit.get("strategy", "default")
+    preserve = fit.get("preserve", "none")
+
     img_w, img_h = image.size
     is_landscape_or_square = img_w >= img_h
     is_portrait = not is_landscape_or_square
 
-    # ---- 1) Legacy behavior: keep-width ----
-    if "keep-width" in image_settings:
-        # Keep full width; crop vertically as needed, then resize
+    # Preserve semantics (replaces any legacy keep-width/height idea)
+    if preserve == "width":
         desired_ratio = desired_width / desired_height
         new_height = int(img_w / desired_ratio)
-        # Centered vertical crop; clamp to image bounds
-        y_offset = max(0, (img_h - new_height) // 2)
-        y_end = min(img_h, y_offset + new_height)
-        cropped = image.crop((0, y_offset, img_w, y_end))
-        return cropped.resize((desired_width, desired_height), Image.LANCZOS)
+        y0 = max(0, (img_h - new_height) // 2)
+        return image.crop((0, y0, img_w, min(img_h, y0 + new_height))) \
+                    .resize((desired_width, desired_height), Image.LANCZOS)
 
-    # ---- 2) Smart orientation-aware behavior ----
-    if "smart-orientation" in image_settings:
+    if preserve == "height":
+        desired_ratio = desired_width / desired_height
+        new_width = int(img_h * desired_ratio)
+        x0 = max(0, (img_w - new_width) // 2)
+        return image.crop((x0, 0, min(img_w, x0 + new_width), img_h)) \
+                    .resize((desired_width, desired_height), Image.LANCZOS)
+
+    # Strategy rules
+    if strategy == "smart":
         if orientation == "horizontal":
             if is_portrait:
-                # Letterbox: preserve aspect, no crop
                 fitted = ImageOps.contain(image, (desired_width, desired_height), method=Image.LANCZOS)
                 canvas = Image.new("RGB", (desired_width, desired_height), background)
                 x = (desired_width - fitted.width) // 2
@@ -74,18 +69,25 @@ def resize_image(image, desired_size, image_settings=None, orientation="horizont
                 canvas.paste(fitted, (x, y))
                 return canvas
             else:
-                # Crop to fill (centered)
                 return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
-
-        else:  # orientation == "vertical"
+        else:  # vertical
             if is_portrait:
-                # Crop just enough to fill (centered); typically a slight crop
                 return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
             else:
-                # Stretch landscape to fill portrait (non-proportional)
                 return image.resize((desired_width, desired_height), Image.LANCZOS)
 
-    # ---- 3) Default behavior (simple, robust): crop to fill ----
+    if strategy == "contain":
+        fitted = ImageOps.contain(image, (desired_width, desired_height), method=Image.LANCZOS)
+        canvas = Image.new("RGB", (desired_width, desired_height), background)
+        x = (desired_width - fitted.width) // 2
+        y = (desired_height - fitted.height) // 2
+        canvas.paste(fitted, (x, y))
+        return canvas
+
+    if strategy == "stretch":
+        return image.resize((desired_width, desired_height), Image.LANCZOS)
+
+    # default == cover
     return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
 
 def apply_image_enhancement(img, image_settings={}):

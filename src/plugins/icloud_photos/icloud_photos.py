@@ -4,7 +4,7 @@ import random
 import io
 import requests
 import logging
-from PIL import Image, ImageOps, ImageColor, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from plugins.base_plugin.base_plugin import BasePlugin
 
 USER_AGENT = "InkyPi/iCloudPhotos/0.1"
@@ -185,21 +185,14 @@ class IcloudPhotos(BasePlugin):
             logger.debug("Persisted state with %d photos", len(saved))
 
         # 6) Render
-        dimensions = device_config.get_resolution()
-        if device_config.get_config("orientation") == "vertical":
-            dimensions = dimensions[::-1]
+        image = self._download_image(photo_url)
+        if image is None:
+            raise RuntimeError("Failed to download image from iCloud.")
 
-        bg_hex = settings.get("backgroundColor", "#FFFFFF")
-        bg_rgb = ImageColor.getrgb(bg_hex)
+        return image
 
-        img = self._download_and_fit(photo_url, dimensions, background=bg_rgb)
-        return img
-
-    def _download_and_fit(self, url, target_size, background=(255, 255, 255)):
-        """
-        Download image bytes and fit into target_size while preserving aspect ratio.
-        Uses white letterboxing (common for e-ink).
-        """
+    def _download_image(self, url):
+        """Download image bytes and return an RGB PIL image."""
         logger.debug("Downloading image: %s", url)
         try:
             resp = SESSION.get(url, timeout=TIMEOUT)
@@ -209,15 +202,7 @@ class IcloudPhotos(BasePlugin):
         
         try:
             with Image.open(io.BytesIO(resp.content)) as im:
-                im = im.convert("RGB")  # e-ink friendly
-                canvas = Image.new("RGB", target_size, background)
-                fitted = ImageOps.contain(im, target_size, method=Image.LANCZOS) 
-
-                # center paste
-                x = (canvas.width - fitted.width) // 2
-                y = (canvas.height - fitted.height) // 2
-                canvas.paste(fitted, (x, y))
-                logger.debug("Pasted fitted image at (%d, %d) onto canvas %s", x, y, target_size)
-                return canvas
+                im = ImageOps.exif_transpose(im)
+                return im.convert("RGB")
         except UnidentifiedImageError as e:
             raise RuntimeError("Downloaded content is not a valid image format.") from e

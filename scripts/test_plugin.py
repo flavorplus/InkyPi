@@ -51,7 +51,12 @@ for resolution in RESOLUTIONS:
 
         # post processing thats applied before being displayed
         img = change_orientation(img, orientation)
-        img = resize_image(img, resolution, plugin_config.get('image_settings', []), orientation)
+        img = resize_image(
+            img,
+            resolution,
+            fit=plugin_config.get('photo_fit'),
+            orientation=orientation,
+        )
         # rotate the image again when pasting
         if orientation == "vertical":
             img = img.rotate(-90, expand=1)
@@ -60,4 +65,3 @@ for resolution in RESOLUTIONS:
     y+= max(width, height)
 
 composite.show()
-
