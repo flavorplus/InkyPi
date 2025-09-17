@@ -73,16 +73,6 @@ class DisplayManager:
         if not hasattr(self, "display"):
             raise ValueError("No valid display instance initialized.")
 
-        logger.info(f"Saving image to {self.device_config.current_image_file}")
-        logger.debug(
-            "display_image start | resolution=%s orientation=%s photo_fit=%s backgroundColor=%s",
-            self.device_config.get_resolution(),
-            self.device_config.get_config("orientation", default="horizontal"),
-            photo_fit,
-            backgroundColor,
-        )
-        image.save(self.device_config.current_image_file)
-
         bg_hex = backgroundColor or "#FFFFFF"
         try:
             background = ImageColor.getrgb(bg_hex)
@@ -123,5 +113,15 @@ class DisplayManager:
             self.device_config.get_config("image_settings", {}),
         )
         logger.debug("display_image post-enhancement size=%s", image.size)
+
+        logger.info(f"Saving image to {self.device_config.current_image_file}")
+        logger.debug(
+            "display_image start | resolution=%s orientation=%s photo_fit=%s backgroundColor=%s",
+            self.device_config.get_resolution(),
+            self.device_config.get_config("orientation", default="horizontal"),
+            photo_fit,
+            backgroundColor,
+        )
+        image.save(self.device_config.current_image_file)
 
         self.display.display_image(image)
