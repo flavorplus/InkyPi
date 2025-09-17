@@ -34,6 +34,14 @@ def resize_image(image, desired_size, fit=None, orientation="horizontal", backgr
     Resize/crop image to desired_size based on fit strategy.
     fit: { "strategy": "smart|cover|contain|stretch|default", "preserve": "none|width|height" }
     """
+    logger.debug(
+        "resize_image start | size=%s image_size=%s fit=%s orientation=%s background=%s",
+        desired_size,
+        image.size,
+        fit,
+        orientation,
+        background,
+    )
     desired_width, desired_height = map(int, desired_size)
     fit = fit or {}
     strategy = fit.get("strategy", "default")
@@ -45,21 +53,28 @@ def resize_image(image, desired_size, fit=None, orientation="horizontal", backgr
 
     # Preserve semantics (replaces any legacy keep-width/height idea)
     if preserve == "width":
+        logger.debug("resize_image preserve width branch | desired=%s", desired_size)
         desired_ratio = desired_width / desired_height
         new_height = int(img_w / desired_ratio)
         y0 = max(0, (img_h - new_height) // 2)
-        return image.crop((0, y0, img_w, min(img_h, y0 + new_height))) \
+        result = image.crop((0, y0, img_w, min(img_h, y0 + new_height))) \
                     .resize((desired_width, desired_height), Image.LANCZOS)
+        logger.debug("resize_image preserve width result_size=%s", result.size)
+        return result
 
     if preserve == "height":
+        logger.debug("resize_image preserve height branch | desired=%s", desired_size)
         desired_ratio = desired_width / desired_height
         new_width = int(img_h * desired_ratio)
         x0 = max(0, (img_w - new_width) // 2)
-        return image.crop((x0, 0, min(img_w, x0 + new_width), img_h)) \
+        result = image.crop((x0, 0, min(img_w, x0 + new_width), img_h)) \
                     .resize((desired_width, desired_height), Image.LANCZOS)
+        logger.debug("resize_image preserve height result_size=%s", result.size)
+        return result
 
     # Strategy rules
     if strategy == "smart":
+        logger.debug("resize_image smart strategy | orientation=%s is_portrait=%s", orientation, is_portrait)
         if orientation == "horizontal":
             if is_portrait:
                 fitted = ImageOps.contain(image, (desired_width, desired_height), method=Image.LANCZOS)
@@ -67,28 +82,43 @@ def resize_image(image, desired_size, fit=None, orientation="horizontal", backgr
                 x = (desired_width - fitted.width) // 2
                 y = (desired_height - fitted.height) // 2
                 canvas.paste(fitted, (x, y))
+                logger.debug("resize_image smart horizontal portrait result_size=%s", canvas.size)
                 return canvas
             else:
-                return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+                result = ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+                logger.debug("resize_image smart horizontal landscape result_size=%s", result.size)
+                return result
         else:  # vertical
             if is_portrait:
-                return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+                result = ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+                logger.debug("resize_image smart vertical portrait result_size=%s", result.size)
+                return result
             else:
-                return image.resize((desired_width, desired_height), Image.LANCZOS)
+                result = image.resize((desired_width, desired_height), Image.LANCZOS)
+                logger.debug("resize_image smart vertical landscape result_size=%s", result.size)
+                return result
 
     if strategy == "contain":
+        logger.debug("resize_image contain strategy")
         fitted = ImageOps.contain(image, (desired_width, desired_height), method=Image.LANCZOS)
         canvas = Image.new("RGB", (desired_width, desired_height), background)
         x = (desired_width - fitted.width) // 2
         y = (desired_height - fitted.height) // 2
         canvas.paste(fitted, (x, y))
+        logger.debug("resize_image contain result_size=%s", canvas.size)
         return canvas
 
     if strategy == "stretch":
-        return image.resize((desired_width, desired_height), Image.LANCZOS)
+        logger.debug("resize_image stretch strategy")
+        result = image.resize((desired_width, desired_height), Image.LANCZOS)
+        logger.debug("resize_image stretch result_size=%s", result.size)
+        return result
 
     # default == cover
-    return ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+    logger.debug("resize_image cover/default strategy")
+    result = ImageOps.fit(image, (desired_width, desired_height), method=Image.LANCZOS, centering=(0.5, 0.5))
+    logger.debug("resize_image cover result_size=%s", result.size)
+    return result
 
 def apply_image_enhancement(img, image_settings={}):
 

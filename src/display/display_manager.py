@@ -74,6 +74,13 @@ class DisplayManager:
             raise ValueError("No valid display instance initialized.")
 
         logger.info(f"Saving image to {self.device_config.current_image_file}")
+        logger.debug(
+            "display_image start | resolution=%s orientation=%s photo_fit=%s backgroundColor=%s",
+            self.device_config.get_resolution(),
+            self.device_config.get_config("orientation", default="horizontal"),
+            photo_fit,
+            backgroundColor,
+        )
         image.save(self.device_config.current_image_file)
 
         bg_hex = backgroundColor or "#FFFFFF"
@@ -84,7 +91,9 @@ class DisplayManager:
             background = (255, 255, 255)
 
         orientation = self.device_config.get_config("orientation", default="horizontal")
+        logger.debug("display_image applying orientation=%s", orientation)
         image = change_orientation(image, orientation)
+        logger.debug("display_image post-orientation size=%s", image.size)
 
         fit_config = {}
         if isinstance(photo_fit, dict):
@@ -95,6 +104,7 @@ class DisplayManager:
         elif photo_fit:
             logger.warning("Unsupported photo_fit format %r; expected dict", photo_fit)
 
+        logger.debug("display_image normalized fit_config=%s", fit_config)
         image = resize_image(
             image,
             self.device_config.get_resolution(),
@@ -102,13 +112,16 @@ class DisplayManager:
             orientation=orientation,
             background=background,
         )
+        logger.debug("display_image post-resize size=%s", image.size)
 
         if self.device_config.get_config("inverted_image"):
             image = image.rotate(180)
+            logger.debug("display_image applied inversion rotation")
 
         image = apply_image_enhancement(
             image,
             self.device_config.get_config("image_settings", {}),
         )
+        logger.debug("display_image post-enhancement size=%s", image.size)
 
         self.display.display_image(image)
