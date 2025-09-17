@@ -37,13 +37,18 @@ def base62_decode(s):
 
 def get_stream_id(url):
     """Extract the stream ID from an iCloud shared album URL."""
-    expected_prefix = "https://www.icloud.com/sharedalbum/#"
-    if not url or not url.startswith(expected_prefix):
+    if not url or not url.startswith("https://www.icloud.com/sharedalbum/"):
         raise RuntimeError("Please provide a full iCloud Shared Album URL, e.g. https://www.icloud.com/sharedalbum/#B2D...")
 
-    stream_id = url.split("#", 1)[-1].strip()
+    # Split off the fragment part after '#'
+    parts = url.split("#", 1)
+    if len(parts) < 2:
+        raise RuntimeError("URL does not contain a fragment with the album ID.")
+
+    stream_id = parts[1].strip()
     if not stream_id or not re.match(r"^[A-Za-z0-9]+$", stream_id):
         raise RuntimeError("The iCloud stream ID appears invalid. Double-check the URL.")
+
     logger.debug("Extracted stream_id=%s", stream_id)
     return stream_id
 
