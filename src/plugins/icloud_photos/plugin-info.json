@@ -2,7 +2,10 @@
   "display_name": "iCloud Photos",
   "id": "icloud_photos",
   "class": "IcloudPhotos",
-  "photo_fit": {
-    "strategy": "smart"
+  "defaults": {
+    "backgroundColor": "#FFFFFF",
+    "photo_fit": {
+      "strategy": "smart"
+    }
   }
 }

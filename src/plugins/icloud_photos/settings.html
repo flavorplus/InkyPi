@@ -8,8 +8,12 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  const urlInput = document.getElementById('album_url');
+  if (!urlInput) return;
   if (loadPluginSettings) {
-    document.getElementById('album_url').value = pluginSettings.album_url;
+    urlInput.value = pluginSettings.album_url || '';
+  } else if (pluginSettings.album_url) {
+    urlInput.value = pluginSettings.album_url;
   }
 });
 </script>

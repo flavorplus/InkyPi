@@ -18,7 +18,9 @@ plugin_settings = {
     "title": "Today In History",
     "textModel": "gpt-4o",
     "textPrompt": "idk",
-    "selectedFrame": "Rectangle"
+    "selectedFrame": "Rectangle",
+    "backgroundColor": "#ffffff",
+    "photo_fit": {"strategy": "cover"}
 }
 
 mock_device_config = MagicMock()
@@ -33,6 +35,7 @@ if not plugin_config:
 load_plugins(plugin_config)
 
 plugin_config = plugin_config[0]
+
 plugin_instance = get_plugin_instance(plugin_config)
 
 total_height = sum([max(resolution) for resolution in RESOLUTIONS])

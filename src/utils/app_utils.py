@@ -2,6 +2,7 @@ import logging
 import os
 import socket
 import subprocess
+import re
 
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -125,10 +126,23 @@ def generate_startup_image(dimensions=(800,480)):
     return image
 
 def parse_form(request_form):
-    request_dict = request_form.to_dict()
+    request_dict = {}
+    pattern = re.compile(r'^([^\[\]]+)\[([^\[\]]+)\]$')
+
     for key in request_form.keys():
         if key.endswith('[]'):
             request_dict[key] = request_form.getlist(key)
+            continue
+
+        value = request_form.get(key)
+        match = pattern.match(key)
+        if match:
+            outer, inner = match.groups()
+            request_dict.setdefault(outer, {})
+            request_dict[outer][inner] = value
+        else:
+            request_dict[key] = value
+
     return request_dict
 
 def handle_request_files(request_files, form_data={}):
@@ -174,3 +188,4 @@ def handle_request_files(request_files, form_data={}):
         else:
             file_location_map[key] = file_path
     return file_location_map
+

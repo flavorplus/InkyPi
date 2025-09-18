@@ -14,7 +14,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.1.0-beta.1/js/select2.min.js"></script>
 
     <script>
-        const pluginSettings = {{ plugin_settings | tojson if plugin_settings else {} }};
+        const pluginDefaults = {{ plugin.defaults | default({}) | tojson }};
+        const pluginSettings = Object.assign({}, pluginDefaults, {{ plugin_settings | tojson if plugin_settings else {} }});
         const pluginInstanceName ='{{ plugin_instance }}';
         const loadPluginSettings = pluginInstanceName != '';
         const styleSettings = {{ style_settings | default(false) | tojson }};
@@ -171,6 +172,20 @@
             if (!styleSettings){
                 return;
             }
+            const backgroundColorInput = document.getElementById('backgroundColor');
+            if (backgroundColorInput) {
+                const color = pluginSettings.backgroundColor || '#ffffff';
+                backgroundColorInput.value = color;
+            }
+            const photoFitStrategyInput = document.getElementById('photoFitStrategy');
+            const photoFitPreserveInput = document.getElementById('photoFitPreserve');
+            const fit = pluginSettings.photo_fit || {};
+            if (photoFitStrategyInput) {
+                photoFitStrategyInput.value = fit.strategy || '';
+            }
+            if (photoFitPreserveInput) {
+                photoFitPreserveInput.value = fit.preserve || '';
+            }
             if (loadPluginSettings) {
                 if (pluginSettings.topMargin) {
                     document.getElementById('topMargin').value = pluginSettings.topMargin;
@@ -233,7 +248,26 @@
                 let selectedFrameOption = document.querySelector('.image-option');
                 selectedFrame(selectedFrameOption);
 
-                document.getElementById('margin').value = "5";
+                const topMarginInput = document.getElementById('topMargin');
+                const bottomMarginInput = document.getElementById('bottomMargin');
+                const leftMarginInput = document.getElementById('leftMargin');
+                const rightMarginInput = document.getElementById('rightMargin');
+                const defaultMargin = pluginSettings.margin || 5;
+                if (topMarginInput) topMarginInput.value = pluginSettings.topMargin || defaultMargin;
+                if (bottomMarginInput) bottomMarginInput.value = pluginSettings.bottomMargin || defaultMargin;
+                if (leftMarginInput) leftMarginInput.value = pluginSettings.leftMargin || defaultMargin;
+                if (rightMarginInput) rightMarginInput.value = pluginSettings.rightMargin || defaultMargin;
+                const backgroundOption = pluginSettings.backgroundOption || 'color';
+                const optionInput = document.querySelector(`input[name="backgroundOption"][value="${backgroundOption}"]`);
+                if (optionInput) optionInput.checked = true;
+
+                const fitDefaults = {};
+                if (photoFitStrategyInput) {
+                    photoFitStrategyInput.value = fitDefaults.strategy || '';
+                }
+                if (photoFitPreserveInput) {
+                    photoFitPreserveInput.value = fitDefaults.preserve || '';
+                }
             }
         });
     </script>
@@ -329,10 +363,31 @@
                                 </div>
                             </div>
                         </div>
-                        
+
+                        <!-- Photo Fit Options -->
+                        <div class="form-group">
+                            <label for="photoFitStrategy" class="form-label">Photo Fit Strategy:</label>
+                            <select id="photoFitStrategy" name="photo_fit[strategy]" class="form-input">
+                                <option value="">Cover (fill the frame; crop excess)</option>
+                                <option value="smart">Smart (contain portrait on horizontal, cover otherwise)</option>
+                                <option value="contain">Contain (letterbox to preserve full image)</option>
+                                <option value="stretch">Stretch (force exact resolution)</option>
+                                <option value="cover">Cover</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="photoFitPreserve" class="form-label">Preserve:</label>
+                            <select id="photoFitPreserve" name="photo_fit[preserve]" class="form-input">
+                                <option value="">None (crop as needed)</option>
+                                <option value="width">Width (maintain full width)</option>
+                                <option value="height">Height (maintain full height)</option>
+                            </select>
+                        </div>
+
                         <!-- Hidden input fields to store existing file data -->
                         <div id="hiddenFileInput"></div>
-                        
+
                         <!-- Text Color Picker -->
                         <div class="form-group">
                             <label for="textColor" class="form-label">Text Color:</label>

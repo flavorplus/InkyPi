@@ -119,10 +119,11 @@ class RefreshTask:
                         # check if image is the same as current image
                         if image_hash != latest_refresh.image_hash:
                             logger.info(f"Updating display. | refresh_info: {refresh_info}")
+                            plugin_settings = refresh_action.get_plugin_settings() or {}
                             self.display_manager.display_image(
                                 image,
-                                photo_fit=plugin.config.get("photo_fit"),
-                                backgroundColor=plugin.config.get("backgroundColor"),
+                                photo_fit=plugin_settings.get("photo_fit"),
+                                backgroundColor=plugin_settings.get("backgroundColor"),
                             )
                         else:
                             logger.info(f"Image already displayed, skipping refresh. | refresh_info: {refresh_info}")
@@ -221,6 +222,10 @@ class RefreshAction:
         """Return the plugin ID associated with this refresh."""
         raise NotImplementedError("Subclasses must implement the get_plugin_id method.")
 
+    def get_plugin_settings(self):
+        """Return the plugin settings associated with this refresh."""
+        raise NotImplementedError("Subclasses must implement the get_plugin_settings method.")
+
 class ManualRefresh(RefreshAction):
     """Performs a manual refresh based on a plugin's ID and its associated settings.
     
@@ -244,6 +249,9 @@ class ManualRefresh(RefreshAction):
     def get_plugin_id(self):
         """Return the plugin ID associated with this refresh."""
         return self.plugin_id
+
+    def get_plugin_settings(self):
+        return self.plugin_settings
 
 class PlaylistRefresh(RefreshAction):
     """Performs a refresh using a plugin instance within a playlist context.
@@ -270,6 +278,9 @@ class PlaylistRefresh(RefreshAction):
     def get_plugin_id(self):
         """Return the plugin ID associated with this refresh."""
         return self.plugin_instance.plugin_id
+
+    def get_plugin_settings(self):
+        return self.plugin_instance.settings
 
     def execute(self, plugin, device_config, current_dt: datetime):
         """Performs a refresh for the specified plugin instance within its playlist context."""
