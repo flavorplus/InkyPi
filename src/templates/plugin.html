@@ -14,10 +14,54 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.1.0-beta.1/js/select2.min.js"></script>
 
     <script>
-        const pluginDefaults = {{ plugin.defaults | default({}) | tojson }};
-        const pluginSettings = Object.assign({}, pluginDefaults, {{ plugin_settings | tojson if plugin_settings else {} }});
-        const pluginInstanceName ='{{ plugin_instance }}';
-        const loadPluginSettings = pluginInstanceName != '';
+        const rawPluginDefaults = {{ plugin.defaults | default({}) | tojson }};
+        const rawPluginSettings = {{ plugin_settings | tojson if plugin_settings else {} }};
+
+        const pluginDefaults = (rawPluginDefaults && typeof rawPluginDefaults === 'object') ? rawPluginDefaults : {};
+        const savedSettings = (rawPluginSettings && typeof rawPluginSettings === 'object') ? rawPluginSettings : {};
+
+        const cloneDeep = (value) => {
+            if (value == null) {
+                return {};
+            }
+            if (typeof structuredClone === 'function') {
+                try {
+                    return structuredClone(value);
+                } catch (err) {
+                    console.warn('structuredClone failed, falling back to JSON copy', err);
+                }
+            }
+            try {
+                return JSON.parse(JSON.stringify(value));
+            } catch (err) {
+                console.warn('Failed to deep clone plugin defaults via JSON copy', err);
+                return {};
+            }
+        };
+
+        const mergeDeep = (target, source) => {
+            if (!source || typeof source !== 'object') {
+                return target;
+            }
+            Object.keys(source).forEach((key) => {
+                const sourceValue = source[key];
+                if (Array.isArray(sourceValue)) {
+                    target[key] = sourceValue.slice();
+                } else if (sourceValue && typeof sourceValue === 'object') {
+                    if (!target[key] || typeof target[key] !== 'object') {
+                        target[key] = {};
+                    }
+                    mergeDeep(target[key], sourceValue);
+                } else {
+                    target[key] = sourceValue;
+                }
+            });
+            return target;
+        };
+
+        const pluginSettings = mergeDeep(cloneDeep(pluginDefaults), savedSettings);
+        const pluginInstanceName = '{{ plugin_instance }}';
+        const loadPluginSettings = pluginInstanceName !== '';
         const styleSettings = {{ style_settings | default(false) | tojson }};
 
         let uploadedFiles = {};
@@ -44,7 +88,7 @@
                 }
             });
 
-            if (action == "add_to_playlist"){
+            if (action === "add_to_playlist"){
                 url = '{{ url_for("playlist.add_plugin") }}';
                 const scheduleFormData = new FormData(scheduleForm);
                 const scheduleData = {};
@@ -52,10 +96,10 @@
                     scheduleData[key] = value;
                 }
                 formData.append("refresh_settings", JSON.stringify(scheduleData));
-            } else if (action == "update_instance") {
-                url = "{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + pluginInstanceName,
-                method = 'PUT'
-                clearFormOnSubmit = false
+            } else if (action === "update_instance") {
+                url = "{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + pluginInstanceName;
+                method = 'PUT';
+                clearFormOnSubmit = false;
             }
 
             // Send data to the server
@@ -71,7 +115,7 @@
                 closeModal('scheduleModal');
 
                 if (clearFormOnSubmit) {
-                    form.reset()
+                    form.reset();
                     uploadedFiles = {};
                     document.querySelectorAll('input[clear-on-submit]').forEach(input => {
                         input.value = '';
@@ -80,8 +124,8 @@
                     document.querySelectorAll('[delete-on-submit]').forEach(div => {
                         div.remove();
                     });
-                    if (action == "add_to_playlist"){
-                        scheduleForm.reset()
+                    if (action === "add_to_playlist"){
+                        scheduleForm.reset();
                     }
                 }
             } catch (error) {
@@ -139,7 +183,6 @@
             const fileNameDisplay = document.getElementById('fileName');
             const fileNameText = document.getElementById('fileNameText');
             const uploadButtonLabel = document.getElementById('uploadButtonLabel');
-            const removeFileButton = document.getElementById('removeFileButton');
             const file = fileInput.files[0];
 
             if (file) {
@@ -172,102 +215,84 @@
             if (!styleSettings){
                 return;
             }
-            const backgroundColorInput = document.getElementById('backgroundColor');
-            if (backgroundColorInput) {
-                const color = pluginSettings.backgroundColor || '#ffffff';
-                backgroundColorInput.value = color;
+
+            const getElement = (id) => document.getElementById(id);
+            const setValue = (element, value) => {
+                if (element && value !== undefined && value !== null) {
+                    element.value = value;
+                }
+            };
+
+            const backgroundColorInput = getElement('backgroundColor');
+            const photoFitStrategyInput = getElement('photoFitStrategy');
+            const photoFitPreserveInput = getElement('photoFitPreserve');
+            const textColorInput = getElement('textColor');
+
+            if (!pluginSettings.photo_fit || typeof pluginSettings.photo_fit !== 'object') {
+                pluginSettings.photo_fit = {};
             }
-            const photoFitStrategyInput = document.getElementById('photoFitStrategy');
-            const photoFitPreserveInput = document.getElementById('photoFitPreserve');
-            const fit = pluginSettings.photo_fit || {};
-            if (photoFitStrategyInput) {
-                photoFitStrategyInput.value = fit.strategy || '';
+            const fitSettings = pluginSettings.photo_fit;
+
+            setValue(photoFitStrategyInput, fitSettings.strategy);
+            setValue(photoFitPreserveInput, fitSettings.preserve);
+
+            ['topMargin', 'bottomMargin', 'leftMargin', 'rightMargin'].forEach((field) => {
+                if (pluginSettings[field] === undefined || pluginSettings[field] === null) {
+                    return;
+                }
+                const element = getElement(field);
+                setValue(element, pluginSettings[field]);
+            });
+
+            setValue(backgroundColorInput, pluginSettings.backgroundColor);
+
+            if (pluginSettings.backgroundOption) {
+                const optionInput = document.querySelector(`input[name="backgroundOption"][value="${pluginSettings.backgroundOption}"]`);
+                if (optionInput) {
+                    optionInput.checked = true;
+                }
             }
-            if (photoFitPreserveInput) {
-                photoFitPreserveInput.value = fit.preserve || '';
-            }
-            if (loadPluginSettings) {
-                if (pluginSettings.topMargin) {
-                    document.getElementById('topMargin').value = pluginSettings.topMargin;
-                }
-                if (pluginSettings.bottomMargin) {
-                    document.getElementById('bottomMargin').value = pluginSettings.bottomMargin;
-                }
-                if (pluginSettings.leftMargin) {
-                    document.getElementById('leftMargin').value = pluginSettings.leftMargin;
-                }
-                if (pluginSettings.rightMargin) {
-                    document.getElementById('rightMargin').value = pluginSettings.rightMargin;
-                }
-                // Populate background options (color or image)
-                if (pluginSettings.backgroundOption) {
-                    document.querySelector(`input[name="backgroundOption"][value="${pluginSettings.backgroundOption}"]`).checked = true;
-                }
 
-                // Set background color
-                if (pluginSettings.backgroundColor) {
-                    document.getElementById('backgroundColor').value = pluginSettings.backgroundColor;
-                }
+            setValue(textColorInput, pluginSettings.textColor);
 
-                // Populate text color
-                if (pluginSettings.textColor) {
-                    document.getElementById('textColor').value = pluginSettings.textColor;
-                }
+            const fileNameDisplay = getElement('fileName');
+            const fileNameText = getElement('fileNameText');
+            const uploadButtonLabel = getElement('uploadButtonLabel');
 
-                // Handle background image selection
-                const fileNameDisplay = document.getElementById('fileName');
-                const fileNameText = document.getElementById('fileNameText');
-                const uploadButtonLabel = document.getElementById('uploadButtonLabel');
+            if (pluginSettings.backgroundImageFile && fileNameDisplay && fileNameText && uploadButtonLabel) {
+                const filePath = pluginSettings.backgroundImageFile;
+                const fileName = filePath.split('/').pop();
 
-                if (pluginSettings.backgroundImageFile) {
-                    const filePath = pluginSettings.backgroundImageFile
-                    const fileName = filePath.split('/').pop();
+                fileNameText.textContent = fileName;
+                fileNameDisplay.style.display = 'flex';
+                uploadButtonLabel.style.display = 'none';
 
-                    // display the file name
-                    fileNameText.textContent = fileName;
-                    fileNameDisplay.style.display = 'flex';
-                    uploadButtonLabel.style.display = 'none';
-
-                    // create a hidden input for the existing file
-                    const hiddenInput = document.createElement("input");
-                    hiddenInput.type = "hidden";
-                    hiddenInput.name = "backgroundImageFile";
+                const hiddenContainer = getElement('hiddenFileInput');
+                if (hiddenContainer && !document.getElementById('hidden-file-name')) {
+                    const hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = 'backgroundImageFile';
                     hiddenInput.value = filePath;
-                    hiddenInput.id = `hidden-file-name`;
+                    hiddenInput.id = 'hidden-file-name';
                     hiddenInput.setAttribute('delete-on-submit', '');
-                    document.getElementById("hiddenFileInput").appendChild(hiddenInput);
-                } else {
-                    fileNameDisplay.style.display = 'none';
-                    uploadButtonLabel.style.display = 'block';
+                    hiddenContainer.appendChild(hiddenInput);
                 }
+            } else if (fileNameDisplay && uploadButtonLabel) {
+                fileNameDisplay.style.display = 'none';
+                uploadButtonLabel.style.display = 'block';
+            }
 
-                let selectedFrameOption = document.querySelector(`.image-option[data-face-name="${pluginSettings.selectedFrame}"]`);
+            const selectedFrameName = pluginSettings.selectedFrame;
+            let selectedFrameOption = selectedFrameName
+                ? document.querySelector(`.image-option[data-face-name="${selectedFrameName}"]`)
+                : null;
+            if (!selectedFrameOption) {
+                selectedFrameOption = document.querySelector('.image-option');
+            }
+            if (selectedFrameOption) {
                 selectedFrame(selectedFrameOption);
-            } else {
-                // set default values
-                let selectedFrameOption = document.querySelector('.image-option');
-                selectedFrame(selectedFrameOption);
-
-                const topMarginInput = document.getElementById('topMargin');
-                const bottomMarginInput = document.getElementById('bottomMargin');
-                const leftMarginInput = document.getElementById('leftMargin');
-                const rightMarginInput = document.getElementById('rightMargin');
-                const defaultMargin = pluginSettings.margin || 5;
-                if (topMarginInput) topMarginInput.value = pluginSettings.topMargin || defaultMargin;
-                if (bottomMarginInput) bottomMarginInput.value = pluginSettings.bottomMargin || defaultMargin;
-                if (leftMarginInput) leftMarginInput.value = pluginSettings.leftMargin || defaultMargin;
-                if (rightMarginInput) rightMarginInput.value = pluginSettings.rightMargin || defaultMargin;
-                const backgroundOption = pluginSettings.backgroundOption || 'color';
-                const optionInput = document.querySelector(`input[name="backgroundOption"][value="${backgroundOption}"]`);
-                if (optionInput) optionInput.checked = true;
-
-                const fitDefaults = {};
-                if (photoFitStrategyInput) {
-                    photoFitStrategyInput.value = fitDefaults.strategy || '';
-                }
-                if (photoFitPreserveInput) {
-                    photoFitPreserveInput.value = fitDefaults.preserve || '';
-                }
+                const frameName = selectedFrameOption.getAttribute('data-face-name');
+                pluginSettings.selectedFrame = frameName;
             }
         });
     </script>
